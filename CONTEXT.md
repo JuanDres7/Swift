@@ -2,7 +2,7 @@
 
 ## ¿Qué es Swift?
 Swift es una aplicación web de gestión de pedidos para una tienda de tecnología. Es un proyecto académico que integra dos materias:
-- **Programación 2:** POO, herencia, interfaces, polimorfismo y patrón de diseño Observer
+- **Programación 2:** POO, herencia, polimorfismo y patrón de diseño Strategy
 - **Sistemas de Bases de Datos:** vistas, procedimientos almacenados, triggers y auditoría
 
 ---
@@ -25,10 +25,10 @@ Swift/
 ├── backend/
 │   ├── routers/          # Endpoints HTTP (pedidos.py, clientes.py, productos.py)
 │   ├── services/         # Lógica de negocio (PedidoService, DescuentoService)
-│   ├── models/           # Clases Python con POO y herencia
-│   ├── observers/        # Patrón Observer (Observer, InventarioObserver, FacturacionObserver, EnvioObserver)
+│   ├── strategies/       # Patrón Strategy para descuentos
 │   ├── repositories/     # Acceso a datos (PedidoRepo, ClienteRepo, ProductoRepo)
-│   ├── database/         # Conexión a Supabase (conexion.py, supabase_client.py)
+│   ├── database/         # Conexión a Supabase (conexion.py, supabase_client.py, models.py)
+│   ├── schemas.py        # Schemas Pydantic para la API
 │   ├── .env              # Credenciales (NO subir a GitHub)
 │   ├── .env.example      # Plantilla de variables de entorno
 │   └── requirements.txt  # Dependencias Python
@@ -47,24 +47,29 @@ Swift/
 
 ### Flujo de una petición
 ```
-React → FastAPI Router → Service → Observer → Repository → Supabase/PostgreSQL
+React → FastAPI Router → Service → Strategy → Repository → stored procedure → Supabase/PostgreSQL
 ```
 
-### Regla clave de división
+### Reglas clave
 - **React** nunca llama directamente a Supabase. Todo pasa por FastAPI.
 - **FastAPI** no reimplementa el CRUD básico. Solo maneja lógica de negocio compleja.
 - **Supabase** es exclusivamente la base de datos PostgreSQL en la nube.
+- **Toda operación sobre la BD pasa por un procedimiento almacenado o trigger** — sin SQL directo ni operaciones directas a tablas desde Python. Esto lo exige el profesor de Sistemas de BD para prevenir SQL Injection.
 
 ---
 
-## Patrón de Diseño: Observer
+## Patrón de Diseño: Strategy (para descuentos)
 
-La clase `Pedido` actúa como **Subject**. Al cambiar de estado notifica automáticamente a:
-- `InventarioObserver` → actualiza el stock
-- `FacturacionObserver` → genera la factura
-- `EnvioObserver` → registra el envío
+Aplicado en RF-05. El `DescuentoService` recibe un pedido y delega el cálculo a la estrategia correspondiente:
 
-Esto complementa los triggers de PostgreSQL que hacen lo mismo a nivel base de datos, demostrando ambas materias en paralelo.
+```
+EstrategiaDescuento (abstracta)
+    ├── SinDescuento           → 0%
+    ├── DescuentoPorCantidad   → >3 productos distintos → 10%
+    └── DescuentoPorTotal      → total >$500 → 15%
+```
+
+El servicio evalúa las condiciones, elige la estrategia con mayor descuento y la aplica. Es lógica **100% en Python**, sin ninguna operación directa a la BD.
 
 ---
 
@@ -111,7 +116,7 @@ Esto complementa los triggers de PostgreSQL que hacen lo mismo a nivel base de d
 ## Variables de entorno (.env en /backend)
 ```env
 SUPABASE_URL=https://dipioyuctgreinhqrgaw.supabase.co
-SUPABASE_SECRET_KEY=sb_secret_...
+SUPABASE_ANON_KEY=...
 DATABASE_URL=postgresql://postgres:[PASSWORD]@db.dipioyuctgreinhqrgaw.supabase.co:5432/postgres
 ```
 
@@ -119,15 +124,14 @@ DATABASE_URL=postgresql://postgres:[PASSWORD]@db.dipioyuctgreinhqrgaw.supabase.c
 
 ## Dependencias Python (backend)
 ```
-fastapi
-uvicorn
-supabase
-psycopg2-binary
-sqlalchemy
-python-dotenv
-pydantic
-python-jose
-passlib
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+supabase==2.15.2
+psycopg2-binary==2.9.10
+sqlmodel==0.0.21
+python-dotenv==1.1.0
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
 ```
 
 ---
@@ -152,13 +156,14 @@ passlib
 - Crear pedidos con múltiples productos
 - Validar stock antes de crear
 - Estados: pendiente → confirmado → enviado → entregado / cancelado
-- Al confirmar: descontar stock automáticamente
-- Al cancelar confirmado: devolver stock
+- Al confirmar: descontar stock automáticamente (trigger en BD)
+- Al cancelar confirmado: devolver stock (stored procedure)
 
 ### RF-05 Sistema de Descuentos
 - >3 productos distintos → 10% de descuento
 - Total >$500 → 15% de descuento
 - Si aplican las dos reglas → aplicar la mayor (15%)
+- Implementado con patrón Strategy en Python
 
 ### RF-06 Generación de Facturas
 - Generación automática al confirmar pedido (trigger en BD)
@@ -192,20 +197,19 @@ passlib
 - Vistas, procedimientos y triggers creados en Supabase
 - Migraciones versionadas en GitHub
 - GitHub conectado a Supabase
-- Repositorio inicializado con estructura de carpetas
-- `.env` configurado en backend
-- Dependencias Python instaladas
+- `requirements.txt` generado
+- Capa `database/` implementada (conexion.py, supabase_client.py, models.py)
+- `schemas.py` implementado
+- Patrón Strategy definido (pendiente de implementar en `strategies/`)
 
 ### 🔲 Pendiente
 1. **Backend — FastAPI**
-   - Crear `main.py` con la app de FastAPI
-   - Configurar conexión a Supabase en `database/`
-   - Implementar modelos Python con POO y herencia en `models/`
-   - Implementar patrón Observer en `observers/`
+   - Eliminar carpeta `observers/` (patrón descartado)
+   - Implementar patrón Strategy en `strategies/`
    - Implementar repositorios en `repositories/`
    - Implementar servicios en `services/`
    - Implementar routers en `routers/`
-   - Generar `requirements.txt`
+   - Crear `main.py` con la app de FastAPI
 
 2. **Frontend — React**
    - Inicializar proyecto con Vite
@@ -218,8 +222,8 @@ passlib
 
 ## Notas importantes para el desarrollo
 
-1. **El profesor evalúa el código Python** — la POO y el patrón Observer deben ser explícitos y bien estructurados.
-2. **FastAPI no duplica el CRUD de Supabase** — solo maneja lógica de negocio compleja.
-3. **El patrón Observer vive en `/observers`** — `Pedido` es el Subject, los observers son `InventarioObserver`, `FacturacionObserver` y `EnvioObserver`.
-4. **Los triggers de BD complementan el Observer de Python** — ambos reaccionan al cambio de estado de un pedido, uno en Python y otro en PostgreSQL.
+1. **Toda operación a la BD usa stored procedures o triggers** — nunca operaciones directas a tablas desde Python. Requisito del profesor de Sistemas de BD.
+2. **El patrón Strategy vive en `/strategies`** — lógica de descuentos 100% en Python, sin tocar la BD.
+3. **El profesor de Programación 2 evalúa POO y Strategy** — las clases deben mostrar herencia y polimorfismo de forma clara.
+4. **FastAPI no duplica el CRUD de Supabase** — solo maneja lógica de negocio compleja.
 5. **React nunca llama a Supabase directamente** — siempre pasa por FastAPI.
