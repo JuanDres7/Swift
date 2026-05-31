@@ -1,8 +1,9 @@
 import os
+from pathlib import Path
 from sqlmodel import Session, create_engine
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 
